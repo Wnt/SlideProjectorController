@@ -45,19 +45,19 @@ typedef struct Projector {
 
 } Projector;
 
-//
-//enum CommandType {
-//	NEXT, PREVIOUS, RESTART
-//};
-//enum Probability {
-//	ALWAYS, SOMETIMES, RARELY
-//};
-int NEXT = 1;
-int PREVIOUS = 2;
-int RESTART = 3;
-int ALWAYS = 1;
-int SOMETIMES = 5;
-int RARELY = 8;
+
+enum CommandType {
+	NEXT, PREVIOUS, RESTART
+};
+enum Probability {
+	ALWAYS, SOMETIMES, RARELY
+};
+//int NEXT = 1;
+//int PREVIOUS = 2;
+//int RESTART = 3;
+//int ALWAYS = 1;
+//int SOMETIMES = 5;
+//int RARELY = 8;
 
 struct Projector projectors[] = {
 //		next_pin	previous_pin	inits rest to zero
@@ -68,6 +68,7 @@ struct Projector projectors[] = {
 		A1,			A2,			0, 0, 0, NULL, NULL
 };
 int projector_count = 5;
+//int projector_count = 1;
 int command_list[] = {
 //		proj#	tick	probability		command
 		0,		0,		ALWAYS,			NEXT,
@@ -112,37 +113,30 @@ void setup() {
 		Serial.print("\n\r");
 	}
 	delay(500);
-	Timer1.initialize(200000); // set a timer of length 100000 microseconds (or 0.1 sec - or 10Hz)
+	Timer1.initialize(100000); // set a timer of length 100000 microseconds (or 0.1 sec - or 10Hz)
 	Timer1.attachInterrupt(tick); // attach the service routine here
 }
 void tick() {
 	struct Command* current_command;
 	for (int i = 0; i < projector_count; ++i) {
 		current_command = projectors[i].current_command;
-//		Serial.print("projectors[i].last_command_tick");
-//		Serial.print(projectors[i].last_command_tick);
-//		Serial.print("current_command->tick");
-//		Serial.print(current_command->tick);
-//		Serial.print("\n\r");
 		// if projector should run a command now
 		if (projectors[i].last_command_tick + current_command->tick == tick_no) {
-//			Serial.print("Tick #");
-//			Serial.print(tick_no);
-//			Serial.print("\n\rRunning command @ projector #");
-//			Serial.print(i);
+			// if the command is to restart
 			if (current_command->command == RESTART) {
-//				Serial.print("\n\rRESTART");
-				current_command = current_command->next;
+				current_command = projectors[i].first_command;
+				projectors[i].loop_number++;
+				// TODO should re-check if the current command should run now
 			}
 			if (current_command->command == NEXT) {
-//				Serial.print("\n\rNEXT");
 				digitalWrite(projectors[i].next_pin, HIGH);
 				projectors[i].slide_number++;
+				// TODO should add a timed task to write the pin to low
 			}
-			else {
-//				Serial.print("\n\rPREVIOUS");
+			else if (current_command->command == PREVIOUS) {
 				digitalWrite(projectors[i].previous_pin, HIGH);
 				projectors[i].slide_number--;
+				// TODO should add a timed task to write the pin to low
 			}
 			projectors[i].last_command_tick = tick_no;
 			projectors[i].current_command = current_command->next;
@@ -247,25 +241,31 @@ void sayHello() {
 
 // The loop function is called in an endless loop
 void loop() {
-	Serial.print("At tick ");
+	Serial.print("\n\rAt tick #");
 	Serial.print(tick_no);
-	Serial.print("\n\r");
 	struct Command* current_command;
 	for (int i = 0; i < projector_count; ++i) {
+		Serial.print("\n\rProjector #");
+		Serial.print(i);
+		Serial.print(" STATUS:");
+		Serial.print("\n\rloop #");
+		Serial.print(projectors[i].loop_number);
+		Serial.print("\n\rat slide #");
+		Serial.print(projectors[i].slide_number);
 		current_command = projectors[i].current_command;
-		Serial.print("projectors[i].last_command_tick");
+		Serial.print("\n\rlast_command_tick: ");
 		Serial.print(projectors[i].last_command_tick);
-		Serial.print("\n\r");
-		Serial.print("current_command->tick");
+		Serial.print("\n\rnext command tick: ");
 		Serial.print(current_command->tick);
-		Serial.print("\n\r");
+		Serial.print(" it will be run at tick #");
+		Serial.print(projectors[i].last_command_tick + current_command->tick);
+		Serial.print("\n\rnext command is: ");
 		if (current_command->command == RESTART) {
-			Serial.print("\n\rRESTART");
-		}
-		if (current_command->command == NEXT) {
-			Serial.print("\n\rNEXT");
-		} else {
-			Serial.print("\n\rPREVIOUS");
+			Serial.print("RESTART");
+		} else if (current_command->command == NEXT) {
+			Serial.print("NEXT");
+		} else if (current_command->command == PREVIOUS) {
+			Serial.print("PREVIOUS");
 		}
 	}
 	Serial.print("\n\r");

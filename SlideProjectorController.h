@@ -4,10 +4,12 @@
 // - extern variable definitions
 // In the appropriate section
 
-#ifndef analogInSerialOut_H_
-#define analogInSerialOut_H_
+#ifndef SlideProjectorController_H_
+#define SlideProjectorController_H_
 #include "Arduino.h"
-//add your includes for the project analogInSerialOut here
+
+
+#include "TimerOne.h"
 
 
 //end of add your includes here
@@ -16,18 +18,20 @@ extern "C" {
 #endif
 void loop();
 void setup();
-void parseCommands();
-void sayHello();
-void loadProjectorConfig();
-void printProjectorInfo(struct Projector *);
 #ifdef __cplusplus
 } // extern "C"
 #endif
 
-//add your function definitions for the project analogInSerialOut here
+//add your function definitions for the project SlideProjectorController here
 
+void parseCommands();
+void sayHello();
+void loadProjectorConfig();
+void initProjectorPins();
+void printProjectorInfo(struct Projector *);
+void tick();
 
 
 
 //Do not add code below this line
-#endif /* analogInSerialOut_H_ */
+#endif /* SlideProjectorController_H_ */

@@ -30,6 +30,7 @@ void loadProjectorConfig();
 void initProjectorPins();
 void printProjectorInfo(struct Projector *);
 void tick();
+void printCommandInfo(struct Command*);
 
 
 

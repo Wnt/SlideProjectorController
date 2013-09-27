@@ -62,11 +62,12 @@ enum Probability {
 
 struct Projector projectors[] = {
 //		next_pin	previous_pin	inits rest to zero
-		2,			3, 			0, 0, 0, NULL, NULL, NULL,
-		4,			5, 			0, 0, 0, NULL, NULL, NULL,
+		A3,			A2,			0, 0, 0, NULL, NULL, NULL,
 		6,			7, 			0, 0, 0, NULL, NULL, NULL,
 		8,			9, 			0, 0, 0, NULL, NULL, NULL,
-		A1,			A2,			0, 0, 0, NULL, NULL, NULL,
+		A4,			A5,			0, 0, 0, NULL, NULL, NULL,
+		5,			4,			0, 0, 0, NULL, NULL, NULL,
+//		3,			2,			0, 0, 0, NULL, NULL, NULL,
 };
 int projector_count = 5;
 //int projector_count = 1;
@@ -120,18 +121,32 @@ void setup() {
 void tick() {
 	struct Command* current_command;
 	for (int i = 0; i < projector_count; ++i) {
+
+		// if the previous command should end on this tick
+		if (projectors[i].last_command_tick + command_end_delay == tick_no) {
+			switch (projectors[i].current_command->command) {
+				case NEXT:
+					digitalWrite(projectors[i].next_pin, LOW);
+					break;
+				case PREVIOUS:
+					digitalWrite(projectors[i].previous_pin, LOW);
+					break;
+				default:
+					break;
+			}
+		}
+
 		current_command = projectors[i].next_command;
 
 		// if the command is to restart
 		if (projectors[i].last_command_tick + current_command->tick == tick_no && current_command->command == RESTART) {
 			// reset to the first command
 			current_command = projectors[i].first_command;
+			projectors[i].next_command = projectors[i].first_command;
 			projectors[i].loop_number++;
 
 			// mark the command as done
 			projectors[i].last_command_tick = tick_no;
-			projectors[i].current_command = projectors[i].next_command;
-			projectors[i].next_command = current_command->next;
 		}
 
 		// if projector should run a command now
@@ -150,19 +165,6 @@ void tick() {
 			projectors[i].last_command_tick = tick_no;
 			projectors[i].current_command = projectors[i].next_command;
 			projectors[i].next_command = current_command->next;
-		}
-		// if the previous command should end on this tick
-		if (projectors[i].last_command_tick + command_end_delay == tick_no) {
-			switch (current_command->command) {
-				case NEXT:
-					digitalWrite(projectors[i].next_pin, LOW);
-					break;
-				case PREVIOUS:
-					digitalWrite(projectors[i].previous_pin, LOW);
-					break;
-				default:
-					break;
-			}
 		}
 	}
 	tick_no++;
@@ -267,6 +269,7 @@ void loop() {
 	Serial.print("\n\rAt tick #");
 	Serial.print(tick_no);
 	struct Command* current_command;
+	struct Command* next_command;
 	for (int i = 0; i < projector_count; ++i) {
 		Serial.print("\n\rProjector #");
 		Serial.print(i);
@@ -275,23 +278,27 @@ void loop() {
 		Serial.print(projectors[i].loop_number);
 		Serial.print("\n\rat slide #");
 		Serial.print(projectors[i].slide_number);
-		current_command = projectors[i].next_command;
-		Serial.print("\n\rlast_command_tick: ");
+		Serial.print("\n\rlatest command was run at tick#");
 		Serial.print(projectors[i].last_command_tick);
-		Serial.print("\n\rnext command tick: ");
-		Serial.print(current_command->tick);
-		Serial.print(" it will be run at tick #");
-		Serial.print(projectors[i].last_command_tick + current_command->tick);
-		Serial.print("\n\rnext command is: ");
-		if (current_command->command == RESTART) {
-			Serial.print("RESTART");
-		} else if (current_command->command == NEXT) {
-			Serial.print("NEXT");
-		} else if (current_command->command == PREVIOUS) {
-			Serial.print("PREVIOUS");
-		}
+		current_command = projectors[i].current_command;
+		printCommandInfo(current_command);
+		next_command = projectors[i].next_command;
+		Serial.print("\n\rnext command will be run at tick #");
+		Serial.print(projectors[i].last_command_tick + next_command->tick);
+		printCommandInfo(next_command);
 	}
 	Serial.print("\n\r");
 	Serial.print("\n\r");
-	delay(1000);
+	delay(500);
+}
+
+void printCommandInfo(struct Command* command) {
+	Serial.print("\n\rnext command is: ");
+	if (command->command == RESTART) {
+		Serial.print("RESTART");
+	} else if (command->command == NEXT) {
+		Serial.print("NEXT");
+	} else if (command->command == PREVIOUS) {
+		Serial.print("PREVIOUS");
+	}
 }

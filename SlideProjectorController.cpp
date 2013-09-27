@@ -13,7 +13,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this SlideProjectorController. If not, see <http://www.gnu.org/licenses/>.
+ * along with SlideProjectorController. If not, see <http://www.gnu.org/licenses/>.
  */
 
 // Do not remove the include below
@@ -42,6 +42,7 @@ typedef struct Projector {
 	int last_command_tick;
 	Command * first_command;
 	Command * current_command;
+	Command * next_command;
 
 } Projector;
 
@@ -61,41 +62,42 @@ enum Probability {
 
 struct Projector projectors[] = {
 //		next_pin	previous_pin	inits rest to zero
-		2,			3, 			0, 0, 0, NULL, NULL,
-		4,			5, 			0, 0, 0, NULL, NULL,
-		6,			7, 			0, 0, 0, NULL, NULL,
-		8,			9, 			0, 0, 0, NULL, NULL,
-		A1,			A2,			0, 0, 0, NULL, NULL
+		2,			3, 			0, 0, 0, NULL, NULL, NULL,
+		4,			5, 			0, 0, 0, NULL, NULL, NULL,
+		6,			7, 			0, 0, 0, NULL, NULL, NULL,
+		8,			9, 			0, 0, 0, NULL, NULL, NULL,
+		A1,			A2,			0, 0, 0, NULL, NULL, NULL,
 };
 int projector_count = 5;
 //int projector_count = 1;
 int command_list[] = {
 //		proj#	tick	probability		command
 		0,		0,		ALWAYS,			NEXT,
-		0,		100,	ALWAYS,			PREVIOUS,
-		0,		100,	ALWAYS,			RESTART,
+		0,		200,	ALWAYS,			PREVIOUS,
+		0,		200,	ALWAYS,			RESTART,
 		1,		0,		ALWAYS,			NEXT,
-		1,		100,	ALWAYS,			NEXT,
-		1,		100,	ALWAYS,			PREVIOUS,
-		1,		100,	ALWAYS,			PREVIOUS,
-		1,		100,	ALWAYS,			RESTART,
+		1,		200,	ALWAYS,			NEXT,
+		1,		200,	ALWAYS,			PREVIOUS,
+		1,		200,	ALWAYS,			PREVIOUS,
+		1,		200,	ALWAYS,			RESTART,
 		2,		0,		ALWAYS,			PREVIOUS,
-		2,		100,	ALWAYS,			NEXT,
-		2,		100,	ALWAYS,			PREVIOUS,
-		2,		100,	ALWAYS,			NEXT,
-		2,		100,	ALWAYS,			RESTART,
+		2,		200,	ALWAYS,			NEXT,
+		2,		200,	ALWAYS,			PREVIOUS,
+		2,		200,	ALWAYS,			NEXT,
+		2,		200,	ALWAYS,			RESTART,
 		3,		0,		ALWAYS,			NEXT,
-		3,		100,	ALWAYS,			NEXT,
-		3,		100,	ALWAYS,			PREVIOUS,
-		3,		100,	ALWAYS,			PREVIOUS,
-		3,		100,	ALWAYS,			RESTART,
+		3,		200,	ALWAYS,			NEXT,
+		3,		200,	ALWAYS,			PREVIOUS,
+		3,		200,	ALWAYS,			PREVIOUS,
+		3,		200,	ALWAYS,			RESTART,
 		4,		0,		ALWAYS,			NEXT,
-		4,		100,	ALWAYS,			NEXT,
-		4,		100,	ALWAYS,			PREVIOUS,
-		4,		100,	ALWAYS,			PREVIOUS,
-		4,		100,	ALWAYS,			RESTART
+		4,		200,	ALWAYS,			NEXT,
+		4,		200,	ALWAYS,			PREVIOUS,
+		4,		200,	ALWAYS,			PREVIOUS,
+		4,		200,	ALWAYS,			RESTART
 };
 
+int command_end_delay = 10;
 int tick_no = 0;
 
 //The setup function is called once at startup of the sketch
@@ -112,22 +114,28 @@ void setup() {
 		printProjectorInfo(& projectors[i]);
 		Serial.print("\n\r");
 	}
-	delay(500);
-	Timer1.initialize(100000); // set a timer of length 100000 microseconds (or 0.1 sec - or 10Hz)
+	Timer1.initialize(10000); // set a timer of length in microseconds
 	Timer1.attachInterrupt(tick); // attach the service routine here
 }
 void tick() {
 	struct Command* current_command;
 	for (int i = 0; i < projector_count; ++i) {
-		current_command = projectors[i].current_command;
+		current_command = projectors[i].next_command;
+
+		// if the command is to restart
+		if (projectors[i].last_command_tick + current_command->tick == tick_no && current_command->command == RESTART) {
+			// reset to the first command
+			current_command = projectors[i].first_command;
+			projectors[i].loop_number++;
+
+			// mark the command as done
+			projectors[i].last_command_tick = tick_no;
+			projectors[i].current_command = projectors[i].next_command;
+			projectors[i].next_command = current_command->next;
+		}
+
 		// if projector should run a command now
 		if (projectors[i].last_command_tick + current_command->tick == tick_no) {
-			// if the command is to restart
-			if (current_command->command == RESTART) {
-				current_command = projectors[i].first_command;
-				projectors[i].loop_number++;
-				// TODO should re-check if the current command should run now
-			}
 			if (current_command->command == NEXT) {
 				digitalWrite(projectors[i].next_pin, HIGH);
 				projectors[i].slide_number++;
@@ -138,8 +146,23 @@ void tick() {
 				projectors[i].slide_number--;
 				// TODO should add a timed task to write the pin to low
 			}
+			// mark the command as done
 			projectors[i].last_command_tick = tick_no;
-			projectors[i].current_command = current_command->next;
+			projectors[i].current_command = projectors[i].next_command;
+			projectors[i].next_command = current_command->next;
+		}
+		// if the previous command should end on this tick
+		if (projectors[i].last_command_tick + command_end_delay == tick_no) {
+			switch (current_command->command) {
+				case NEXT:
+					digitalWrite(projectors[i].next_pin, LOW);
+					break;
+				case PREVIOUS:
+					digitalWrite(projectors[i].previous_pin, LOW);
+					break;
+				default:
+					break;
+			}
 		}
 	}
 	tick_no++;
@@ -196,7 +219,7 @@ void parseCommands() {
 	}
 	// reset the projectors to first command
 	for (int i = 0; i < projector_count; ++i) {
-		projectors[i].current_command = projectors[i].first_command;
+		projectors[i].next_command = projectors[i].first_command;
 	}
 }
 
@@ -252,7 +275,7 @@ void loop() {
 		Serial.print(projectors[i].loop_number);
 		Serial.print("\n\rat slide #");
 		Serial.print(projectors[i].slide_number);
-		current_command = projectors[i].current_command;
+		current_command = projectors[i].next_command;
 		Serial.print("\n\rlast_command_tick: ");
 		Serial.print(projectors[i].last_command_tick);
 		Serial.print("\n\rnext command tick: ");

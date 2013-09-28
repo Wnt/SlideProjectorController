@@ -74,32 +74,46 @@ int projector_count = 5;
 int command_list[] = {
 //		proj#	tick	probability		command
 		0,		0,		ALWAYS,			NEXT,
-		0,		200,	ALWAYS,			PREVIOUS,
-		0,		200,	ALWAYS,			RESTART,
+		0,		100,	ALWAYS,			PREVIOUS,
+		0,		100,	ALWAYS,			RESTART,
 		1,		0,		ALWAYS,			NEXT,
-		1,		200,	ALWAYS,			NEXT,
-		1,		200,	ALWAYS,			PREVIOUS,
-		1,		200,	ALWAYS,			PREVIOUS,
-		1,		200,	ALWAYS,			RESTART,
+		1,		133,	ALWAYS,			NEXT,
+		1,		100,	ALWAYS,			PREVIOUS,
+		1,		100,	ALWAYS,			PREVIOUS,
+		1,		100,	ALWAYS,			RESTART,
 		2,		0,		ALWAYS,			PREVIOUS,
-		2,		200,	ALWAYS,			NEXT,
-		2,		200,	ALWAYS,			PREVIOUS,
-		2,		200,	ALWAYS,			NEXT,
-		2,		200,	ALWAYS,			RESTART,
+		2,		100,	ALWAYS,			NEXT,
+		2,		100,	ALWAYS,			PREVIOUS,
+		2,		100,	ALWAYS,			NEXT,
+		2,		100,	ALWAYS,			RESTART,
 		3,		0,		ALWAYS,			NEXT,
-		3,		200,	ALWAYS,			NEXT,
-		3,		200,	ALWAYS,			PREVIOUS,
-		3,		200,	ALWAYS,			PREVIOUS,
-		3,		200,	ALWAYS,			RESTART,
+		3,		100,	ALWAYS,			NEXT,
+		3,		100,	ALWAYS,			PREVIOUS,
+		3,		100,	ALWAYS,			PREVIOUS,
+		3,		100,	ALWAYS,			RESTART,
 		4,		0,		ALWAYS,			NEXT,
-		4,		200,	ALWAYS,			NEXT,
-		4,		200,	ALWAYS,			PREVIOUS,
-		4,		200,	ALWAYS,			PREVIOUS,
-		4,		200,	ALWAYS,			RESTART
+		4,		100,	ALWAYS,			NEXT,
+		4,		100,	ALWAYS,			NEXT,
+		4,		100,	ALWAYS,			NEXT,
+		4,		100,	ALWAYS,			PREVIOUS,
+		4,		100,	ALWAYS,			PREVIOUS,
+		4,		100,	ALWAYS,			PREVIOUS,
+		4,		100,	ALWAYS,			PREVIOUS,
+		4,		100,	ALWAYS,			RESTART
 };
+const int analogInPin = A0;
+
+bool printProjectorStatus = true;
 
 int command_end_delay = 10;
+int min_wait_between_commands = 150;
+
 int tick_no = 0;
+bool restart_mode = false;
+int restart_mode_last_active_tick = 0;
+bool restart_done = true;
+int sensor_value = 0;
+int speed_multiplier = 0;
 
 //The setup function is called once at startup of the sketch
 void setup() {
@@ -119,6 +133,33 @@ void setup() {
 	Timer1.attachInterrupt(tick); // attach the service routine here
 }
 void tick() {
+
+	// read the analog in value:
+	sensor_value = analogRead(analogInPin);
+	if (sensor_value > 800) {
+		speed_multiplier = 2;
+		if (sensor_value > 950) {
+			//if restart mode just started
+			if (restart_mode == false) {
+				restart_mode_last_active_tick = tick_no;
+			}
+			restart_mode = true;
+		}
+		// dial not in reset mode and reset finished
+		else if (restart_done) {
+			restart_mode = false;
+			restart_done = false;
+			// reset last projector ticks, next command and loop count
+			for (int i = 0; i < projector_count; ++i) {
+				projectors[i].last_command_tick = tick_no;
+				projectors[i].next_command = projectors[i].first_command;
+				projectors[i].loop_number = 0;
+			}
+		}
+	} else {
+		speed_multiplier = map(sensor_value, 0, 800, 10, 2);
+	}
+
 	struct Command* current_command;
 	for (int i = 0; i < projector_count; ++i) {
 
@@ -135,36 +176,79 @@ void tick() {
 					break;
 			}
 		}
+		// if in restart mode or restart still running, don't advance
+		if(!restart_mode) {
+			current_command = projectors[i].next_command;
 
-		current_command = projectors[i].next_command;
+			// if the command is to restart
+			// TODO <= operator doesn't play nice when tick count overflows
+			if (projectors[i].last_command_tick
+					+ current_command->tick * speed_multiplier <= tick_no
+					&& current_command->command == RESTART) {
+				// reset to the first command
+				current_command = projectors[i].first_command;
+				projectors[i].next_command = projectors[i].first_command;
+				projectors[i].loop_number++;
 
-		// if the command is to restart
-		if (projectors[i].last_command_tick + current_command->tick == tick_no && current_command->command == RESTART) {
-			// reset to the first command
-			current_command = projectors[i].first_command;
-			projectors[i].next_command = projectors[i].first_command;
-			projectors[i].loop_number++;
+				// mark the command as done
+				projectors[i].last_command_tick = tick_no;
+			}
 
-			// mark the command as done
-			projectors[i].last_command_tick = tick_no;
+			// if projector should run a command now
+			// TODO <= operator doesn't play nice when tick count overflows
+			if (projectors[i].last_command_tick
+					+ current_command->tick * speed_multiplier <= tick_no) {
+				if (current_command->command == NEXT) {
+					digitalWrite(projectors[i].next_pin, HIGH);
+					projectors[i].slide_number++;
+					// TODO should add a timed task to write the pin to low
+				}
+				else if (current_command->command == PREVIOUS) {
+					digitalWrite(projectors[i].previous_pin, HIGH);
+					projectors[i].slide_number--;
+					// TODO should add a timed task to write the pin to low
+				}
+				// mark the command as done
+				projectors[i].last_command_tick = tick_no;
+				projectors[i].current_command = projectors[i].next_command;
+				projectors[i].next_command = current_command->next;
+			}
 		}
-
-		// if projector should run a command now
-		if (projectors[i].last_command_tick + current_command->tick == tick_no) {
-			if (current_command->command == NEXT) {
-				digitalWrite(projectors[i].next_pin, HIGH);
-				projectors[i].slide_number++;
-				// TODO should add a timed task to write the pin to low
+	}
+	// if restart mode on
+	if (restart_mode) {
+		// all commands have ended and min_wait has elapsed
+		if (restart_mode_last_active_tick + command_end_delay
+				+ min_wait_between_commands == tick_no) {
+			// start command to go towards slide 0
+			for (int i = 0; i < projector_count; ++i) {
+				if (projectors[i].slide_number > 0) {
+					digitalWrite(projectors[i].previous_pin, HIGH);
+				}
+				else if (projectors[i].slide_number < 0) {
+					digitalWrite(projectors[i].next_pin, HIGH);
+				}
 			}
-			else if (current_command->command == PREVIOUS) {
-				digitalWrite(projectors[i].previous_pin, HIGH);
-				projectors[i].slide_number--;
-				// TODO should add a timed task to write the pin to low
+			restart_mode_last_active_tick = tick_no;
+		}
+		// if should end restart commands on this tick
+		if (restart_mode_last_active_tick + command_end_delay == tick_no) {
+			// set restart as done, loop will set it to false if all projectors are not at slide zero
+			restart_done = true;
+			for (int i = 0; i < projector_count; ++i) {
+				if (projectors[i].slide_number > 0) {
+					digitalWrite(projectors[i].previous_pin, LOW);
+					// now one slide closer to zero
+					projectors[i].slide_number--;
+				} else if (projectors[i].slide_number < 0) {
+					digitalWrite(projectors[i].next_pin, LOW);
+					// now one slide closer to zero
+					projectors[i].slide_number++;
+				}
+				if (projectors[i].slide_number != 0) {
+					restart_done = false;
+				}
 			}
-			// mark the command as done
-			projectors[i].last_command_tick = tick_no;
-			projectors[i].current_command = projectors[i].next_command;
-			projectors[i].next_command = current_command->next;
 		}
 	}
 	tick_no++;
@@ -268,24 +352,32 @@ void sayHello() {
 void loop() {
 	Serial.print("\n\rAt tick #");
 	Serial.print(tick_no);
-	struct Command* current_command;
-	struct Command* next_command;
-	for (int i = 0; i < projector_count; ++i) {
-		Serial.print("\n\rProjector #");
-		Serial.print(i);
-		Serial.print(" STATUS:");
-		Serial.print("\n\rloop #");
-		Serial.print(projectors[i].loop_number);
-		Serial.print("\n\rat slide #");
-		Serial.print(projectors[i].slide_number);
-		Serial.print("\n\rlatest command was run at tick#");
-		Serial.print(projectors[i].last_command_tick);
-		current_command = projectors[i].current_command;
-		printCommandInfo(current_command);
-		next_command = projectors[i].next_command;
-		Serial.print("\n\rnext command will be run at tick #");
-		Serial.print(projectors[i].last_command_tick + next_command->tick);
-		printCommandInfo(next_command);
+	Serial.print("\n\rsensor = ");
+	Serial.print(sensor_value);
+	Serial.print("\t speed_multiplier = ");
+	Serial.println(speed_multiplier);
+	if (printProjectorStatus) {
+		struct Command* current_command;
+		struct Command* next_command;
+		for (int i = 0; i < projector_count; ++i) {
+			Serial.print("\n\rProjector #");
+			Serial.print(i);
+			Serial.print(" STATUS:");
+			Serial.print("\n\rloop #");
+			Serial.print(projectors[i].loop_number);
+			Serial.print("\n\rat slide #");
+			Serial.print(projectors[i].slide_number);
+			Serial.print("\n\rlatest command was run at tick#");
+			Serial.print(projectors[i].last_command_tick);
+			current_command = projectors[i].current_command;
+			Serial.print("\n\rlatest command was: ");
+			printCommandInfo(current_command);
+			next_command = projectors[i].next_command;
+			Serial.print("\n\rnext command will be run at tick #");
+			Serial.print(projectors[i].last_command_tick + next_command->tick * speed_multiplier);
+			Serial.print("\n\rnext command is: ");
+			printCommandInfo(next_command);
+		}
 	}
 	Serial.print("\n\r");
 	Serial.print("\n\r");
@@ -293,7 +385,6 @@ void loop() {
 }
 
 void printCommandInfo(struct Command* command) {
-	Serial.print("\n\rnext command is: ");
 	if (command->command == RESTART) {
 		Serial.print("RESTART");
 	} else if (command->command == NEXT) {

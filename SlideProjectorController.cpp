@@ -39,7 +39,7 @@ typedef struct Projector {
 	int previous_pin;
 	int slide_number;
 	int loop_number;
-	int last_command_tick;
+	long last_command_tick;
 	Command * first_command;
 	Command * current_command;
 	Command * next_command;
@@ -62,44 +62,63 @@ enum Probability {
 
 struct Projector projectors[] = {
 //		next_pin	previous_pin	inits rest to zero
-		A3,			A2,			0, 0, 0, NULL, NULL, NULL,
-		6,			7, 			0, 0, 0, NULL, NULL, NULL,
-		8,			9, 			0, 0, 0, NULL, NULL, NULL,
-		A4,			A5,			0, 0, 0, NULL, NULL, NULL,
-		5,			4,			0, 0, 0, NULL, NULL, NULL,
-//		3,			2,			0, 0, 0, NULL, NULL, NULL,
+		A3,			A2,			0, 0, 0L, NULL, NULL, NULL,
+		6,			7, 			0, 0, 0L, NULL, NULL, NULL,
+		8,			9, 			0, 0, 0L, NULL, NULL, NULL,
+		A4,			A5,			0, 0, 0L, NULL, NULL, NULL,
+		5,			4,			0, 0, 0L, NULL, NULL, NULL,
+		3,			2,			0, 0, 0L, NULL, NULL, NULL,
 };
 int projector_count = 5;
 //int projector_count = 1;
 int command_list[] = {
 //		proj#	tick	probability		command
-		0,		0,		ALWAYS,			NEXT,
+		0,		20,		ALWAYS,			NEXT,
+		0,		80,		ALWAYS,			NEXT,
+		0,		100,	ALWAYS,			NEXT,
+		0,		100,	ALWAYS,			NEXT,
+		0,		100,	ALWAYS,			NEXT,
+		0,		100,	ALWAYS,			NEXT,
 		0,		100,	ALWAYS,			PREVIOUS,
-		0,		100,	ALWAYS,			RESTART,
-		1,		0,		ALWAYS,			NEXT,
-		1,		133,	ALWAYS,			NEXT,
+		0,		100,	ALWAYS,			PREVIOUS,
+		0,		100,	ALWAYS,			PREVIOUS,
+		0,		100,	ALWAYS,			PREVIOUS,
+		0,		100,	ALWAYS,			PREVIOUS,
+		0,		20,		ALWAYS,			RESTART,
+		1,		50,		ALWAYS,			NEXT,
+		1,		80,		ALWAYS,			NEXT,
+		1,		100,	ALWAYS,			NEXT,
+		1,		100,	ALWAYS,			NEXT,
+		1,		100,	ALWAYS,			NEXT,
 		1,		100,	ALWAYS,			PREVIOUS,
 		1,		100,	ALWAYS,			PREVIOUS,
-		1,		100,	ALWAYS,			RESTART,
-		2,		0,		ALWAYS,			PREVIOUS,
+		1,		100,	ALWAYS,			PREVIOUS,
+		1,		100,	ALWAYS,			PREVIOUS,
+		1,		20,		ALWAYS,			RESTART,
+		2,		0,		ALWAYS,			NEXT,
+		2,		80,		ALWAYS,			NEXT,
+		2,		100,	ALWAYS,			NEXT,
+		2,		100,	ALWAYS,			NEXT,
 		2,		100,	ALWAYS,			NEXT,
 		2,		100,	ALWAYS,			PREVIOUS,
-		2,		100,	ALWAYS,			NEXT,
-		2,		100,	ALWAYS,			RESTART,
-		3,		0,		ALWAYS,			NEXT,
+		2,		100,	ALWAYS,			PREVIOUS,
+		2,		100,	ALWAYS,			PREVIOUS,
+		2,		100,	ALWAYS,			PREVIOUS,
+		2,		20,		ALWAYS,			RESTART,
+		3,		20,		ALWAYS,			NEXT,
+		3,		80,		ALWAYS,			NEXT,
+		3,		100,	ALWAYS,			NEXT,
+		3,		100,	ALWAYS,			NEXT,
+		3,		100,	ALWAYS,			NEXT,
 		3,		100,	ALWAYS,			NEXT,
 		3,		100,	ALWAYS,			PREVIOUS,
 		3,		100,	ALWAYS,			PREVIOUS,
-		3,		100,	ALWAYS,			RESTART,
-		4,		0,		ALWAYS,			NEXT,
-		4,		100,	ALWAYS,			NEXT,
-		4,		100,	ALWAYS,			NEXT,
-		4,		100,	ALWAYS,			NEXT,
-		4,		100,	ALWAYS,			PREVIOUS,
-		4,		100,	ALWAYS,			PREVIOUS,
-		4,		100,	ALWAYS,			PREVIOUS,
-		4,		100,	ALWAYS,			PREVIOUS,
-		4,		100,	ALWAYS,			RESTART
+		3,		100,	ALWAYS,			PREVIOUS,
+		3,		100,	ALWAYS,			PREVIOUS,
+		3,		100,	ALWAYS,			PREVIOUS,
+		3,		20,		ALWAYS,			RESTART,
+		4,		100,	ALWAYS,			RESTART,
+		5,		100,	ALWAYS,			RESTART,
 };
 const int analogInPin = A0;
 
@@ -108,9 +127,9 @@ bool printProjectorStatus = true;
 int command_end_delay = 10;
 int min_wait_between_commands = 150;
 
-int tick_no = 0;
+long tick_no = 0;
 bool restart_mode = false;
-int restart_mode_last_active_tick = 0;
+long restart_mode_last_active_tick = 0;
 bool restart_done = true;
 int sensor_value = 0;
 int speed_multiplier = 0;
@@ -186,8 +205,8 @@ void tick() {
 					+ current_command->tick * speed_multiplier <= tick_no
 					&& current_command->command == RESTART) {
 				// reset to the first command
-				current_command = projectors[i].first_command;
-				projectors[i].next_command = projectors[i].first_command;
+				current_command = projectors[i].first_command->next;
+				projectors[i].next_command = projectors[i].first_command->next;
 				projectors[i].loop_number++;
 
 				// mark the command as done
@@ -257,7 +276,9 @@ void tick() {
 void initProjectorPins() {
 	for (int i = 0; i < projector_count; ++i) {
 		pinMode(projectors[i].next_pin, OUTPUT);
+		digitalWrite(projectors[i].next_pin, LOW);
 		pinMode(projectors[i].previous_pin, OUTPUT);
+		digitalWrite(projectors[i].previous_pin, LOW);
 	}
 }
 /**
